@@ -40,7 +40,7 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --depth=1 --git-lfs
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
