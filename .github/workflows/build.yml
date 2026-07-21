@@ -28,11 +28,10 @@ jobs:
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         
-        # اصلاح دستور ساخت پوشه به صورت ایمن
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionOS/manifest.git -b lineage-23.2 --git-lfs
+        repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
@@ -48,5 +47,5 @@ jobs:
       run: |
         cd android/axion
         source build/envsetup.sh
-        lunch axion_vayu-userdebug
+        lunch lineage_vayu-userdebug
         mka bacon -j8
