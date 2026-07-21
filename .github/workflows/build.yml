@@ -20,7 +20,6 @@ jobs:
         remove-android: 'true'
         remove-haskell: 'true'
         remove-codeql: 'true'
-        remove-docker: 'true'
 
     - name: Initialize Repo and Sync
       run: |
@@ -32,7 +31,7 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --git-lfs
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
@@ -48,5 +47,5 @@ jobs:
       run: |
         cd android/axion
         source build/envsetup.sh
-        lunch lineage_vayu-userdebug
-        mka bacon -j4
+        axion vayu userdebug
+        ax -br -j4
