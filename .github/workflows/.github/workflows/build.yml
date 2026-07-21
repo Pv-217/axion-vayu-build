@@ -30,15 +30,16 @@ jobs:
         
         mkdir android/axion
         cd android/axion
+        
         repo init -u https://github.com/AxionOS/manifest.git -b lineage-23.2 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <project name="LineageOS/android_device_xiaomi_vayu" path="device/xiaomi/vayu" remote="github" />
-          <project name="LineageOS/android_vendor_xiaomi_vayu" path="vendor/xiaomi/vayu" remote="github" />
+          <project name="AxionOS-Devices/device_xiaomi_vayu" path="device/xiaomi/vayu" remote="github" />
+          <project name="AxionOS-Devices/vendor_xiaomi_vayu" path="vendor/xiaomi/vayu" remote="github" />
           <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
-        </manifest>' > .repo/local_manifests/roomservice.xml
+        </manifest>' > .repo/local_manifests/axion.xml
         
         repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j8
 
@@ -48,4 +49,3 @@ jobs:
         source build/envsetup.sh
         lunch axion_vayu-userdebug
         mka bacon -j8
-        
