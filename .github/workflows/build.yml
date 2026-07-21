@@ -31,7 +31,7 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --depth=1 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
@@ -41,7 +41,7 @@ jobs:
           <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
         </manifest>' > .repo/local_manifests/axion.xml
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j4
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --depth=1 -j4
 
     - name: Start Compilation
       run: |
