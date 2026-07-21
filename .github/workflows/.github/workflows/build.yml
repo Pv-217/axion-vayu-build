@@ -1,0 +1,51 @@
+name: Build AxionOS for vayu
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Maximize build disk space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 1024
+        swap-size-mb: 10240
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+
+    - name: Initialize Repo and Sync
+      run: |
+        mkdir -p ~/bin
+        PATH=~/bin:$PATH
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        
+        mkdir android/axion
+        cd android/axion
+        repo init -u https://github.com/AxionOS/manifest.git -b lineage-23.2 --git-lfs
+        
+        mkdir -p .repo/local_manifests
+        echo '<?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <project name="LineageOS/android_device_xiaomi_vayu" path="device/xiaomi/vayu" remote="github" />
+          <project name="LineageOS/android_vendor_xiaomi_vayu" path="vendor/xiaomi/vayu" remote="github" />
+          <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
+        </manifest>' > .repo/local_manifests/roomservice.xml
+        
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j8
+
+    - name: Start Compilation
+      run: |
+        cd android/axion
+        source build/envsetup.sh
+        lunch axion_vayu-userdebug
+        mka bacon -j8
+        
