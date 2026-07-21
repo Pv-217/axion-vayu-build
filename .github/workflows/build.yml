@@ -50,7 +50,7 @@ jobs:
           <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
         </manifest>' > .repo/local_manifests/axion.xml
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --depth=1 -j4
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j4
 
     - name: Start Compilation
       run: |
