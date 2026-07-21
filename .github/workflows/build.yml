@@ -40,7 +40,7 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --depth=1 --git-lfs
         
         mkdir -p .repo/local_manifests
         echo '<?xml version="1.0" encoding="UTF-8"?>
@@ -50,11 +50,11 @@ jobs:
           <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
         </manifest>' > .repo/local_manifests/axion.xml
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j4
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch --depth=1 -j8
 
     - name: Start Compilation
       run: |
         cd android/axion
         source build/envsetup.sh
         axion vayu userdebug
-        ax -br -j4
+        ax -br -j8
