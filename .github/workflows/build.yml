@@ -8,28 +8,30 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Free Disk Space Manually
+    - name: Maximize Build Space & Aggressive Cleanup
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 512
+        swap-size-mb: 4096
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+
+    - name: Extra Cleanup
       run: |
-        echo "=== Free Space Before Cleanup ==="
+        echo "=== Free Space Before Extra Cleanup ==="
         df -h
         
-        # Remove heavy pre-installed software and caches
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /opt/hostedtoolcache
-        sudo rm -rf /usr/local/graalvm
-        sudo rm -rf /usr/local/share/chromium
-        sudo rm -rf /usr/local/share/powershell
-        sudo rm -rf /usr/share/swift
-        sudo rm -rf /usr/local/lib/node_modules
-        sudo rm -rf /usr/share/az_* 2>/dev/null || true
-        sudo rm -rf /usr/share/miniconda 2>/dev/null || true
-        sudo rm -rf /opt/ghc* 2>/dev/null || true
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache \
+                   /usr/local/graalvm /usr/local/share/chromium /usr/local/share/powershell \
+                   /usr/share/swift /usr/local/lib/node_modules /usr/share/az_* \
+                   /opt/ghc* /usr/local/.ghcup /usr/lib/jvm /var/lib/docker /var/cache/*
         
-        # Clean docker and apt caches
         docker system prune -a -f || true
         sudo apt-get clean
+        sudo apt-get autoremove -y
         sudo rm -rf /var/lib/apt/lists/*
         
         echo "=== Free Space After Cleanup ==="
@@ -40,10 +42,10 @@ jobs:
 
     - name: Initialize Repo and Sync
       run: |
-        mkdir -p ~/bin
-        PATH=~/bin:$PATH
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
+        mkdir -p \~/bin
+        PATH=\~/bin:$PATH
+        curl https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
+        chmod a+x \~/bin/repo
         
         mkdir -p android/axion
         cd android/axion
@@ -60,7 +62,8 @@ jobs:
         </manifest>
         EOF
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j4
+        # Sync with lower parallelism to save space
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j3
 
     - name: Setup build environment
       run: |
@@ -72,8 +75,15 @@ jobs:
       run: |
         cd android/axion
         source build/envsetup.sh
+        
+        # Enable ccache with size limit
+        export USE_CCACHE=1
+        export CCACHE_EXEC=$(which ccache)
+        ccache -M 20G
+        
         axion vayu userdebug
-        ax -br -j4
+        ax -br -j3   # Reduced jobs to prevent OOM and disk pressure
+        
         echo "=== Build Complete ==="
         ls -lh out/target/product/vayu/
 
@@ -82,7 +92,7 @@ jobs:
       with:
         name: AxionOS-vayu-${{ github.run_id }}
         path: |
-          out/target/product/vayu/*.zip
+          out/target/product/vayu/AxionOS*.zip
           out/target/product/vayu/*.img
         retention-days: 14
         compression-level: 0
@@ -91,7 +101,6 @@ jobs:
       if: always()
       run: |
         cd android/axion 2>/dev/null || true
-        rm -rf out/target/product/vayu/obj 2>/dev/null || true
-        rm -rf out/target/product/vayu/intermediates 2>/dev/null || true
+        rm -rf out/target/product/vayu/obj out/target/product/vayu/intermediates 2>/dev/null || true
         echo "=== Final Disk Space ==="
-        df -h /
+        df -h
