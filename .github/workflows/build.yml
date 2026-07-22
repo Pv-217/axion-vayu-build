@@ -8,30 +8,28 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Maximize Build Space
+    - name: Maximize Space
       uses: easimon/maximize-build-space@master
       with:
         root-reserve-mb: 512
-        swap-size-mb: 4096
+        swap-size-mb: 8192
 
-    - name: Extra Cleanup
+    - name: Cleanup
       run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/share/swift /usr/local/lib/node_modules
         df -h
-        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/local/share/chromium /usr/share/swift /usr/local/lib/node_modules
-        docker system prune -a -f || true
 
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Setup Repo Tool & Sync
+    - name: Setup & Shallow Sync
       run: |
-        # Install repo tool correctly
-        mkdir -p /usr/local/bin
-        curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
-        chmod a+x /usr/local/bin/repo
-        
-        mkdir -p android/axion
-        cd android/axion
+        mkdir -p \~/bin
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
+        chmod a+x \~/bin/repo
+        sudo cp \~/bin/repo /usr/local/bin/repo
+
+        mkdir -p android/axion && cd android/axion
         
         repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
         
@@ -45,28 +43,15 @@ jobs:
         </manifest>
         EOF
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j2
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j1 --depth=1
       shell: bash
 
-    - name: Setup build environment
+    - name: Build
       run: |
         cd android/axion
         source build/envsetup.sh
-
-    - name: Compile ROM
-      run: |
-        cd android/axion
-        source build/envsetup.sh
-        
         export USE_CCACHE=1
-        ccache -M 12G
-        
+        ccache -M 10G
         axion vayu userdebug
         ax -br -j2
-
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: AxionOS-vayu
-        path: out/target/product/vayu/AxionOS*.zip
-        retention-days: 7
+        ls -lh out/target/product/vayu/
