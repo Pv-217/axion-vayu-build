@@ -19,10 +19,6 @@ jobs:
         remove-codeql: 'true'
         remove-docker: 'true'
         remove-rust: 'true'
-        remove-monodroid: 'true'
-        remove-msbuild: 'true'
-        remove-tcl: 'true'
-        remove-swift: 'true'
 
     - name: Additional Cleanup
       run: |
