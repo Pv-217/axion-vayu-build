@@ -17,40 +17,33 @@ jobs:
         remove-android: 'true'
         remove-haskell: 'true'
         remove-codeql: 'true'
-        remove-docker-images: 'true'
 
     - name: Extra Cleanup
       run: |
-        echo "=== Free Space Before Extra Cleanup ==="
         df -h
-        
-        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache \
-                   /usr/local/graalvm /usr/local/share/chromium /usr/local/share/powershell \
-                   /usr/share/swift /usr/local/lib/node_modules /usr/share/az_* \
-                   /opt/ghc* /usr/local/.ghcup /usr/lib/jvm /var/lib/docker /var/cache/*
-        
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/local/share/chromium /usr/local/share/powershell /usr/share/swift /usr/local/lib/node_modules /opt/ghc* /usr/local/.ghcup /var/lib/docker
         docker system prune -a -f || true
         sudo apt-get clean
-        sudo apt-get autoremove -y
-        sudo rm -rf /var/lib/apt/lists/*
-        
-        echo "=== Free Space After Cleanup ==="
         df -h
 
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Initialize Repo and Sync
+    - name: Setup Repo Tool & Initialize Sync
       run: |
+        # Setup repo tool properly
         mkdir -p \~/bin
-        PATH=\~/bin:$PATH
-        curl https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
         chmod a+x \~/bin/repo
+        echo 'export PATH=\~/bin:$PATH' >> $GITHUB_ENV
+        
+        # Wait a moment for PATH
+        sleep 2
         
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
         
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/axion.xml << 'EOF'
@@ -62,8 +55,8 @@ jobs:
         </manifest>
         EOF
         
-        # Sync with lower parallelism to save space
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j3
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j2
+      shell: bash
 
     - name: Setup build environment
       run: |
@@ -76,13 +69,12 @@ jobs:
         cd android/axion
         source build/envsetup.sh
         
-        # Enable ccache with size limit
         export USE_CCACHE=1
         export CCACHE_EXEC=$(which ccache)
-        ccache -M 20G
+        ccache -M 15G
         
         axion vayu userdebug
-        ax -br -j3   # Reduced jobs to prevent OOM and disk pressure
+        ax -br -j2
         
         echo "=== Build Complete ==="
         ls -lh out/target/product/vayu/
@@ -91,16 +83,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: AxionOS-vayu-${{ github.run_id }}
-        path: |
-          out/target/product/vayu/AxionOS*.zip
-          out/target/product/vayu/*.img
-        retention-days: 14
-        compression-level: 0
+        path: out/target/product/vayu/AxionOS*.zip
+        retention-days: 7
 
     - name: Post-Build Cleanup
       if: always()
       run: |
-        cd android/axion 2>/dev/null || true
-        rm -rf out/target/product/vayu/obj out/target/product/vayu/intermediates 2>/dev/null || true
-        echo "=== Final Disk Space ==="
         df -h
