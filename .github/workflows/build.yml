@@ -8,37 +8,27 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Maximize Build Space & Aggressive Cleanup
+    - name: Maximize Build Space
       uses: easimon/maximize-build-space@master
       with:
         root-reserve-mb: 512
         swap-size-mb: 4096
-        remove-dotnet: 'true'
-        remove-android: 'true'
-        remove-haskell: 'true'
-        remove-codeql: 'true'
 
     - name: Extra Cleanup
       run: |
         df -h
-        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/local/share/chromium /usr/local/share/powershell /usr/share/swift /usr/local/lib/node_modules /opt/ghc* /usr/local/.ghcup /var/lib/docker
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/local/share/chromium /usr/share/swift /usr/local/lib/node_modules
         docker system prune -a -f || true
-        sudo apt-get clean
-        df -h
 
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Setup Repo Tool & Initialize Sync
+    - name: Setup Repo Tool & Sync
       run: |
-        # Setup repo tool properly
-        mkdir -p \~/bin
-        curl -s https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
-        chmod a+x \~/bin/repo
-        echo 'export PATH=\~/bin:$PATH' >> $GITHUB_ENV
-        
-        # Wait a moment for PATH
-        sleep 2
+        # Install repo tool correctly
+        mkdir -p /usr/local/bin
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
+        chmod a+x /usr/local/bin/repo
         
         mkdir -p android/axion
         cd android/axion
@@ -55,14 +45,13 @@ jobs:
         </manifest>
         EOF
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j2
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j2
       shell: bash
 
     - name: Setup build environment
       run: |
         cd android/axion
         source build/envsetup.sh
-        echo "Build environment ready"
 
     - name: Compile ROM
       run: |
@@ -70,23 +59,14 @@ jobs:
         source build/envsetup.sh
         
         export USE_CCACHE=1
-        export CCACHE_EXEC=$(which ccache)
-        ccache -M 15G
+        ccache -M 12G
         
         axion vayu userdebug
         ax -br -j2
-        
-        echo "=== Build Complete ==="
-        ls -lh out/target/product/vayu/
 
-    - name: Upload Build
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: AxionOS-vayu-${{ github.run_id }}
+        name: AxionOS-vayu
         path: out/target/product/vayu/AxionOS*.zip
         retention-days: 7
-
-    - name: Post-Build Cleanup
-      if: always()
-      run: |
-        df -h
