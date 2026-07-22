@@ -37,9 +37,7 @@ jobs:
         sudo rm -rf /usr/local/lib/node_modules
         sudo rm -rf /usr/share/az_* 2>/dev/null || true
         sudo rm -rf /usr/share/miniconda 2>/dev/null || true
-        sudo rm -rf /usr/local/graalvm 2>/dev/null || true
         sudo rm -rf /opt/ghc* 2>/dev/null || true
-        # Clear apt cache
         sudo apt-get clean
         sudo rm -rf /var/lib/apt/lists/*
         df -h
@@ -58,8 +56,7 @@ jobs:
         FREE_GB=$(df -BG /home/runner | awk 'NR==2{print $4}' | tr -d 'G')
         echo "Free space: ${FREE_GB}GB"
         if [ "$FREE_GB" -lt 60 ]; then
-          echo "⚠️  WARNING: Less than 60GB free. Build may fail with ENOSPC."
-          echo "Consider using a larger runner or self-hosted runner."
+          echo "⚠️ WARNING: Less than 60GB free. Build may fail with ENOSPC."
         fi
 
     - name: Checkout
@@ -75,10 +72,8 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        # Initialize repo with shallow clone to save space
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
         
-        # Create local manifests for device tree
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/axion.xml << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
@@ -89,12 +84,7 @@ jobs:
         </manifest>
         EOF
         
-        # Sync with optimized settings - use fewer jobs to save RAM and disk
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch --depth=1 -j4 || \
         repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j4
-        
-        echo "=== Disk Space After Sync ==="
-        df -h /
 
     - name: Setup build environment
       run: |
@@ -106,12 +96,8 @@ jobs:
       run: |
         cd android/axion
         source build/envsetup.sh
-        
-        # Use fewer parallel jobs to reduce memory and disk usage
-        # -j4 is safer for GitHub Actions runners
         axion vayu userdebug
         ax -br -j4
-        
         echo "=== Build Complete ==="
         ls -lh out/target/product/vayu/
 
@@ -129,9 +115,7 @@ jobs:
       if: always()
       run: |
         cd android/axion 2>/dev/null || true
-        # Clean build outputs to save space for artifact upload
         rm -rf out/target/product/vayu/obj 2>/dev/null || true
         rm -rf out/target/product/vayu/intermediates 2>/dev/null || true
         echo "=== Final Disk Space ==="
         df -h /
-گگگگ
