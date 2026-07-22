@@ -8,14 +8,12 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Maximize build disk space
-      uses: easimon/maximize-build-space@v2
-      with:
-        root-reserve-mb: 2048
-        swap-size-mb: 16384
-
-    - name: Additional Cleanup
+    - name: Free Disk Space Manually
       run: |
+        echo "=== Free Space Before Cleanup ==="
+        df -h
+        
+        # Remove heavy pre-installed software and caches
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/ghc
         sudo rm -rf /usr/local/lib/android
@@ -28,23 +26,14 @@ jobs:
         sudo rm -rf /usr/share/az_* 2>/dev/null || true
         sudo rm -rf /usr/share/miniconda 2>/dev/null || true
         sudo rm -rf /opt/ghc* 2>/dev/null || true
+        
+        # Clean docker and apt caches
+        docker system prune -a -f || true
         sudo apt-get clean
         sudo rm -rf /var/lib/apt/lists/*
+        
+        echo "=== Free Space After Cleanup ==="
         df -h
-
-    - name: Free space from docker images
-      run: |
-        docker system prune -a -f || true
-        docker volume prune -f || true
-        df -h
-
-    - name: Check available space
-      run: |
-        echo "=== Disk Space Before Build ==="
-        df -h /
-        df -h /home/runner
-        FREE_GB=$(df -BG /home/runner | awk 'NR==2{print $4}' | tr -d 'G')
-        echo "Free space: ${FREE_GB}GB"
 
     - name: Checkout
       uses: actions/checkout@v4
