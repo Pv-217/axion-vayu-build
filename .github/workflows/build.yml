@@ -8,13 +8,10 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-
     - name: Maximize build disk space
-      uses: easimon/maximize-build-space@master
+      uses: easimon/maximize-build-space@v2
       with:
-        root-reserve-mb: 512
+        root-reserve-mb: 2048
         swap-size-mb: 16384
         remove-dotnet: 'true'
         remove-android: 'true'
@@ -22,13 +19,51 @@ jobs:
         remove-codeql: 'true'
         remove-docker: 'true'
         remove-rust: 'true'
+        remove-monodroid: 'true'
+        remove-msbuild: 'true'
+        remove-tcl: 'true'
+        remove-swift: 'true'
 
-    - name: Clean Extra Unused Space
+    - name: Additional Cleanup
       run: |
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/ghc
         sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/local/graalvm
+        sudo rm -rf /usr/local/share/chromium
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/share/swift
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /usr/share/az_* 2>/dev/null || true
+        sudo rm -rf /usr/share/miniconda 2>/dev/null || true
+        sudo rm -rf /usr/local/graalvm 2>/dev/null || true
+        sudo rm -rf /opt/ghc* 2>/dev/null || true
+        # Clear apt cache
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
         df -h
+
+    - name: Free space from docker images
+      run: |
+        docker system prune -a -f || true
+        docker volume prune -f || true
+        df -h
+
+    - name: Check available space
+      run: |
+        echo "=== Disk Space Before Build ==="
+        df -h /
+        df -h /home/runner
+        FREE_GB=$(df -BG /home/runner | awk 'NR==2{print $4}' | tr -d 'G')
+        echo "Free space: ${FREE_GB}GB"
+        if [ "$FREE_GB" -lt 60 ]; then
+          echo "⚠️  WARNING: Less than 60GB free. Build may fail with ENOSPC."
+          echo "Consider using a larger runner or self-hosted runner."
+        fi
+
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Initialize Repo and Sync
       run: |
@@ -40,21 +75,63 @@ jobs:
         mkdir -p android/axion
         cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
+        # Initialize repo with shallow clone to save space
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
         
+        # Create local manifests for device tree
         mkdir -p .repo/local_manifests
-        echo '<?xml version="1.0" encoding="UTF-8"?>
+        cat > .repo/local_manifests/axion.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
           <project name="AxionOS-Devices/device_xiaomi_vayu" path="device/xiaomi/vayu" remote="github" />
           <project name="AxionOS-Devices/vendor_xiaomi_vayu" path="vendor/xiaomi/vayu" remote="github" />
           <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
-        </manifest>' > .repo/local_manifests/axion.xml
+        </manifest>
+        EOF
         
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j8
+        # Sync with optimized settings - use fewer jobs to save RAM and disk
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch --depth=1 -j4 || \
+        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync --current-branch -j4
+        
+        echo "=== Disk Space After Sync ==="
+        df -h /
 
-    - name: Start Compilation
+    - name: Setup build environment
       run: |
         cd android/axion
         source build/envsetup.sh
+        echo "Build environment ready"
+
+    - name: Compile ROM
+      run: |
+        cd android/axion
+        source build/envsetup.sh
+        
+        # Use fewer parallel jobs to reduce memory and disk usage
+        # -j4 is safer for GitHub Actions runners
         axion vayu userdebug
-        ax -br -j8
+        ax -br -j4
+        
+        echo "=== Build Complete ==="
+        ls -lh out/target/product/vayu/
+
+    - name: Upload Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: AxionOS-vayu-${{ github.run_id }}
+        path: |
+          out/target/product/vayu/*.zip
+          out/target/product/vayu/*.img
+        retention-days: 14
+        compression-level: 0
+
+    - name: Post-Build Cleanup
+      if: always()
+      run: |
+        cd android/axion 2>/dev/null || true
+        # Clean build outputs to save space for artifact upload
+        rm -rf out/target/product/vayu/obj 2>/dev/null || true
+        rm -rf out/target/product/vayu/intermediates 2>/dev/null || true
+        echo "=== Final Disk Space ==="
+        df -h /
+گگگگ
