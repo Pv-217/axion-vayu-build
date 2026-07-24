@@ -1,4 +1,4 @@
-name: Build AxionOS for vayu
+name: Port AxionOS to Poco X3 Pro (vayu) - First Ever!
 
 on:
   workflow_dispatch:
@@ -8,52 +8,192 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Maximize Space
-      uses: easimon/maximize-build-space@master
+    - name: Maximize disk space
+      uses: easimon/maximize-build-space@v2
       with:
-        root-reserve-mb: 256
-        swap-size-mb: 8192
+        root-reserve-mb: 2048
+        swap-size-mb: 16384
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker: 'true'
+        remove-rust: 'true'
+        remove-monodroid: 'true'
+        remove-msbuild: 'true'
+        remove-tcl: 'true'
+        remove-swift: 'true'
 
-    - name: Extreme Cleanup
+    - name: Clean extra space
       run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache
+        sudo rm -rf /usr/local/graalvm /usr/share/swift /usr/local/lib/node_modules
+        sudo rm -rf /usr/share/az_* /usr/local/share/chromium /usr/local/share/powershell
+        sudo rm -rf /opt/microsoft /opt/actioncachecache /usr/local/lib/heroku
+        sudo rm -rf /usr/share/miniconda /usr/local/lib/julia /usr/local/lib/ruby
+        sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* /tmp/*
+        docker system prune -a -f 2>/dev/null || true
         df -h
-        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache /usr/local/graalvm /usr/share/swift /usr/local/lib/node_modules /var/lib/docker
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex \
+          g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+          lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
+          schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-21-jdk
         sudo apt-get clean
-        df -h
 
-    - name: Checkout
-      uses: actions/checkout@v4
+    - name: Setup JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
 
-    - name: Setup Repo & Sync
+    - name: Configure ccache
       run: |
-        mkdir -p \~/bin
-        curl -s https://storage.googleapis.com/git-repo-downloads/repo > \~/bin/repo
-        chmod a+x \~/bin/repo
-        sudo cp \~/bin/repo /usr/local/bin/repo
+        ccache -M 50G
+        echo "CCACHE_DIR=/home/runner/.ccache" >> $GITHUB_ENV
+
+    - name: Initialize AxionOS repo
+      run: |
+        mkdir -p ~/bin
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo cp ~/bin/repo /usr/local/bin/repo
 
         mkdir -p android/axion && cd android/axion
         
-        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs --depth=1
+        # Initialize AxionOS (lineage-23.2 = Android 16)
+        repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
         
+        # Create device-specific local manifest for vayu
         mkdir -p .repo/local_manifests
-        cat > .repo/local_manifests/axion.xml << 'EOF'
+        cat > .repo/local_manifests/vayu.xml << 'MANIFEST'
         <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <project name="AxionOS-Devices/device_xiaomi_vayu" path="device/xiaomi/vayu" remote="github" />
-          <project name="AxionOS-Devices/vendor_xiaomi_vayu" path="vendor/xiaomi/vayu" remote="github" />
-          <project name="LineageOS/android_kernel_xiaomi_vayu" path="kernel/xiaomi/vayu" remote="github" />
+          <!-- ==================== DEVICE TREE ==================== -->
+          <!-- LineageOS device tree for vayu (Poco X3 Pro) -->
+          <project name="LineageOS/android_device_xiaomi_vayu" 
+                   path="device/xiaomi/vayu" remote="github" />
+          
+          <!-- Common tree for SM8150 family (SD860 = overclocked SD855) -->
+          <project name="LineageOS/android_device_xiaomi_sm8150-common" 
+                   path="device/xiaomi/sm8150-common" remote="github" />
+          
+          <!-- ==================== KERNEL ==================== -->
+          <!-- SM8150 kernel (works for SD860/vayu) -->
+          <project name="LineageOS/android_kernel_xiaomi_sm8150" 
+                   path="kernel/xiaomi/sm8150" remote="github" />
+          
+          <!-- ==================== VENDOR BLOBS ==================== -->
+          <!-- Vendor blobs for vayu - using known working sources -->
+          <project name="sanjeevstunner/android_vendor_xiaomi_vayu" 
+                   path="vendor/xiaomi/vayu" remote="github" 
+                   revision="13" />
+          
+          <!-- SM8150 common vendor -->
+          <project name="TheMuppets/proprietary_vendor_xiaomi_sm8150-common" 
+                   path="vendor/xiaomi/sm8150-common" remote="github" 
+                   revision="lineage-22.2" />
         </manifest>
-        EOF
-        
-        repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j1
-      shell: bash
+        MANIFEST
 
-    - name: Build
+    - name: Sync AxionOS source
+      run: |
+        cd android/axion
+        
+        # Sync with retry
+        for i in 1 2 3; do
+          echo "=== Sync attempt $i ==="
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch \
+            --prune --force-sync --current-branch -j$(nproc) && break
+          echo "Attempt $i failed, waiting 60s..."
+          sleep 60
+        done
+        
+        echo "=== Disk Space After Sync ==="
+        df -h /
+
+    - name: Verify device tree exists
+      run: |
+        cd android/axion
+        
+        echo "=== Checking device tree ==="
+        ls -la device/xiaomi/vayu/ 2>/dev/null || {
+          echo "❌ Device tree not found!"
+          exit 1
+        }
+        
+        echo "=== Checking vendor blobs ==="
+        ls -la vendor/xiaomi/vayu/ 2>/dev/null || {
+          echo "❌ Vendor blobs not found!"
+          exit 1
+        }
+        
+        echo "=== Checking kernel ==="
+        ls -la kernel/xiaomi/sm8150/ 2>/dev/null || {
+          echo "❌ Kernel not found!"
+          exit 1
+        }
+        
+        echo "✅ All components found!"
+
+    - name: Setup build environment
       run: |
         cd android/axion
         source build/envsetup.sh
+        
+        # Try AxionOS build system first
+        echo "=== Trying AxionOS build system ==="
+        axion vayu userdebug 2>&1 || {
+          echo "axion command failed, trying lunch..."
+          lunch lineage_vayu-userdebug 2>&1 || {
+            echo "lunch also failed. Available devices:"
+            ls device/xiaomi/ 2>/dev/null
+            exit 1
+          }
+        }
+
+    - name: Build AxionOS
+      run: |
+        cd android/axion
+        source build/envsetup.sh
+        
+        # Set build options
         export USE_CCACHE=1
-        ccache -M 8G
-        axion vayu userdebug
-        ax -br -j1
-        ls -lh out/target/product/vayu/
+        export CCACHE_DIR=/home/runner/.ccache
+        export CCACHE_COMPRESS=1
+        
+        # Set target
+        axion vayu userdebug 2>/dev/null || lunch lineage_vayu-userdebug
+        
+        # Build with AxionOS build command
+        ax -br -j$(nproc) 2>/dev/null || mka bacon -j$(nproc)
+        
+        echo "=== Build Complete ==="
+        echo "=== Output files ==="
+        ls -lh out/target/product/vayu/*.zip 2>/dev/null || echo "No zip found"
+        ls -lh out/target/product/vayu/*.img 2>/dev/null || echo "No img found"
+
+    - name: Upload build
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: AxionOS-vayu-${{ github.run_id }}
+        path: |
+          out/target/product/vayu/*.zip
+          out/target/product/vayu/*.img
+          out/target/product/vayu/*.prop
+        retention-days: 30
+        compression-level: 0
+
+    - name: Cleanup
+      if: always()
+      run: |
+        cd android/axion 2>/dev/null || true
+        rm -rf out/target/product/vayu/obj 2>/dev/null || true
+        rm -rf out/target/product/vayu/intermediates 2>/dev/null || true
+        echo "=== Final Disk Space ==="
+        df -h /
