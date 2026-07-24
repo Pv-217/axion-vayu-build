@@ -76,10 +76,6 @@ jobs:
                    path="device/xiaomi/vayu" remote="github" />
           <project name="LineageOS/android_device_xiaomi_sm8150-common" 
                    path="device/xiaomi/sm8150-common" remote="github" />
-          <project name="AXP-OS/external_chromium-trace" 
-                   path="external/chromium-trace" remote="github" />
-          <project name="AXP-OS/external_protobuf" 
-                   path="external/protobuf" remote="github" />
           <project name="LineageOS/android_kernel_xiaomi_sm8150" 
                    path="kernel/xiaomi/sm8150" remote="github" />
           <project name="sanjeevstunner/android_vendor_xiaomi_vayu" 
@@ -106,15 +102,24 @@ jobs:
     - name: Verify components
       run: |
         cd android/axion
-        echo "=== Checking device tree ==="
         ls device/xiaomi/vayu/ || exit 1
-        echo "=== Checking vendor blobs ==="
         ls vendor/xiaomi/vayu/ || exit 1
-        echo "=== Checking kernel ==="
         ls kernel/xiaomi/sm8150/ || exit 1
-        echo "=== Checking chromium-trace ==="
         ls external/chromium-trace/ || exit 1
+        ls external/perfetto/ || exit 1
         echo "✅ All components found!"
+
+    - name: Fix chromium-trace proto paths
+      run: |
+        cd android/axion
+        if [ ! -d "external/chromium-trace/protos" ]; then
+          echo "=== Creating proto symlinks ==="
+          mkdir -p external/chromium-trace/protos/perfetto
+          ln -sf ../../../perfetto/protos/perfetto/trace external/chromium-trace/protos/perfetto/trace
+          ln -sf ../../../perfetto/protos/perfetto/common external/chromium-trace/protos/perfetto/common
+          ln -sf ../../../perfetto/protos/perfetto/config external/chromium-trace/protos/perfetto/config
+          echo "✅ Proto symlinks created"
+        fi
 
     - name: Setup build environment
       run: |
