@@ -42,7 +42,8 @@ jobs:
           g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
           lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
           libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
-          schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-21-jdk
+          schedtool squashfs-tools xsltproc zip zlib1g-dev openjdk-21-jdk \
+          python3-protobuf python3-protobuf-wheel-fix
         sudo apt-get clean
 
     - name: Setup JDK 21
@@ -65,35 +66,25 @@ jobs:
 
         mkdir -p android/axion && cd android/axion
         
-        # Initialize AxionOS (lineage-23.2 = Android 16)
         repo init -u https://github.com/AxionAOSP/android.git -b lineage-23.2 --git-lfs
         
-        # Create device-specific local manifest for vayu
         mkdir -p .repo/local_manifests
         cat > .repo/local_manifests/vayu.xml << 'MANIFEST'
         <?xml version="1.0" encoding="UTF-8"?>
         <manifest>
-          <!-- ==================== DEVICE TREE ==================== -->
-          <!-- LineageOS device tree for vayu (Poco X3 Pro) -->
           <project name="LineageOS/android_device_xiaomi_vayu" 
                    path="device/xiaomi/vayu" remote="github" />
-          
-          <!-- Common tree for SM8150 family (SD860 = overclocked SD855) -->
           <project name="LineageOS/android_device_xiaomi_sm8150-common" 
                    path="device/xiaomi/sm8150-common" remote="github" />
-          
-          <!-- ==================== KERNEL ==================== -->
-          <!-- SM8150 kernel (works for SD860/vayu) -->
+          <project name="AXP-OS/external_chromium-trace" 
+                   path="external/chromium-trace" remote="github" />
+          <project name="AXP-OS/external_protobuf" 
+                   path="external/protobuf" remote="github" />
           <project name="LineageOS/android_kernel_xiaomi_sm8150" 
                    path="kernel/xiaomi/sm8150" remote="github" />
-          
-          <!-- ==================== VENDOR BLOBS ==================== -->
-          <!-- Vendor blobs for vayu - using known working sources -->
           <project name="sanjeevstunner/android_vendor_xiaomi_vayu" 
                    path="vendor/xiaomi/vayu" remote="github" 
                    revision="13" />
-          
-          <!-- SM8150 common vendor -->
           <project name="TheMuppets/proprietary_vendor_xiaomi_sm8150-common" 
                    path="vendor/xiaomi/sm8150-common" remote="github" 
                    revision="lineage-22.2" />
@@ -103,8 +94,6 @@ jobs:
     - name: Sync AxionOS source
       run: |
         cd android/axion
-        
-        # Sync with retry
         for i in 1 2 3; do
           echo "=== Sync attempt $i ==="
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch \
@@ -112,70 +101,37 @@ jobs:
           echo "Attempt $i failed, waiting 60s..."
           sleep 60
         done
-        
-        echo "=== Disk Space After Sync ==="
         df -h /
 
-    - name: Verify device tree exists
+    - name: Verify components
       run: |
         cd android/axion
-        
         echo "=== Checking device tree ==="
-        ls -la device/xiaomi/vayu/ 2>/dev/null || {
-          echo "❌ Device tree not found!"
-          exit 1
-        }
-        
+        ls device/xiaomi/vayu/ || exit 1
         echo "=== Checking vendor blobs ==="
-        ls -la vendor/xiaomi/vayu/ 2>/dev/null || {
-          echo "❌ Vendor blobs not found!"
-          exit 1
-        }
-        
+        ls vendor/xiaomi/vayu/ || exit 1
         echo "=== Checking kernel ==="
-        ls -la kernel/xiaomi/sm8150/ 2>/dev/null || {
-          echo "❌ Kernel not found!"
-          exit 1
-        }
-        
+        ls kernel/xiaomi/sm8150/ || exit 1
+        echo "=== Checking chromium-trace ==="
+        ls external/chromium-trace/ || exit 1
         echo "✅ All components found!"
 
     - name: Setup build environment
       run: |
         cd android/axion
         source build/envsetup.sh
-        
-        # Try AxionOS build system first
-        echo "=== Trying AxionOS build system ==="
-        axion vayu userdebug 2>&1 || {
-          echo "axion command failed, trying lunch..."
-          lunch lineage_vayu-userdebug 2>&1 || {
-            echo "lunch also failed. Available devices:"
-            ls device/xiaomi/ 2>/dev/null
-            exit 1
-          }
-        }
+        axion vayu userdebug 2>&1 || lunch lineage_vayu-userdebug
 
     - name: Build AxionOS
       run: |
         cd android/axion
         source build/envsetup.sh
-        
-        # Set build options
         export USE_CCACHE=1
         export CCACHE_DIR=/home/runner/.ccache
         export CCACHE_COMPRESS=1
-        
-        # Set target
         axion vayu userdebug 2>/dev/null || lunch lineage_vayu-userdebug
-        
-        # Build with AxionOS build command
         ax -br -j$(nproc) 2>/dev/null || mka bacon -j$(nproc)
-        
-        echo "=== Build Complete ==="
-        echo "=== Output files ==="
-        ls -lh out/target/product/vayu/*.zip 2>/dev/null || echo "No zip found"
-        ls -lh out/target/product/vayu/*.img 2>/dev/null || echo "No img found"
+        ls -lh out/target/product/vayu/*.zip 2>/dev/null
 
     - name: Upload build
       uses: actions/upload-artifact@v4
@@ -185,7 +141,6 @@ jobs:
         path: |
           out/target/product/vayu/*.zip
           out/target/product/vayu/*.img
-          out/target/product/vayu/*.prop
         retention-days: 30
         compression-level: 0
 
@@ -194,6 +149,4 @@ jobs:
       run: |
         cd android/axion 2>/dev/null || true
         rm -rf out/target/product/vayu/obj 2>/dev/null || true
-        rm -rf out/target/product/vayu/intermediates 2>/dev/null || true
-        echo "=== Final Disk Space ==="
         df -h /
